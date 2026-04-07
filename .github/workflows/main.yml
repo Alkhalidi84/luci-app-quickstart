@@ -1,93 +1,81 @@
-name: Build Quickstart Full (Stable No Rate Limit)
+name: Build Quickstart (Full Buildroot)
 
 on:
   workflow_dispatch:
-  push:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # 🔧 Fix apt
-      - name: Fix apt
+      - name: Install deps
         run: |
-          sudo rm -rf /var/lib/apt/lists/*
-          sudo apt-get update -y
-
-      # 📦 Dependencies
-      - name: Install dependencies
-        run: |
-          sudo apt-get install -y \
+          sudo apt update
+          sudo apt install -y \
             build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git \
-            libncurses-dev libssl-dev python3 python3-setuptools \
-            rsync unzip zlib1g-dev file wget curl ca-certificates
+            libncurses-dev libssl-dev python3 rsync unzip \
+            zlib1g-dev file wget
 
-      # 📥 SDK
-      - name: Download OpenWrt SDK
+      # 🔥 تحميل OpenWrt كامل
+      - name: Clone OpenWrt
         run: |
-          wget https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8/openwrt-sdk-23.05.5-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf *.tar.xz
-          DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
-          mv "$DIR" sdk
+          git clone --depth 1 https://github.com/openwrt/openwrt.git
+          cd openwrt
 
-      # 🔄 Feeds
+      # 🔄 feeds
       - name: Update feeds
         run: |
-          cd sdk
+          cd openwrt
           ./scripts/feeds update -a
-          ./scripts/feeds install -a -f
+          ./scripts/feeds install -a
 
-      # 🔥 تحميل quickstart بدون git
-      - name: Download luci-app-quickstart
+      # 🔥 تحميل quickstart
+      - name: Add quickstart
         run: |
-          cd sdk/package
+          cd openwrt/package
           wget https://github.com/animegasan/luci-app-quickstart/archive/refs/heads/main.zip
           unzip main.zip
           mv luci-app-quickstart-main luci-app-quickstart
 
-      # 🔁 Replace with your version
-      - name: Replace luci-app
+      # 🔥 إعداد config
+      - name: Configure
         run: |
-          rm -rf sdk/package/luci-app-quickstart
-          mkdir -p sdk/package/luci-app-quickstart
-          rsync -av --exclude=sdk --exclude=.git ./ sdk/package/luci-app-quickstart/
-
-      # ⚙️ Config
-      - name: Prepare config
-        run: |
-          cd sdk
+          cd openwrt
           make defconfig
 
-      # 🏗️ Build
-      - name: Build quickstart
+      # 🔥 تفعيل الباكج
+      - name: Enable package
         run: |
-          cd sdk
-          make package/luci-app-quickstart/compile V=s -j$(nproc) || true
+          cd openwrt
+          echo "CONFIG_PACKAGE_luci-app-quickstart=y" >> .config
+          echo "CONFIG_PACKAGE_quickstart=y" >> .config
+          make defconfig
 
-      # 📦 Collect IPK
+      # 🔥 build
+      - name: Build
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+
+      # 📦 جمع IPK
       - name: Collect IPK
         run: |
-          mkdir -p output
-          find sdk/bin -name "*.ipk" -exec cp {} output/ \;
+          mkdir output
+          find openwrt/bin/packages -name "*quickstart*.ipk" -exec cp {} output/ \;
 
-      # 🏷️ Tag
-      - name: Create tag
+      # 🏷️ tag
+      - name: Tag
         id: tag
         run: |
-          TAG=quickstart-$(date +%Y%m%d-%H%M)
+          TAG=quickstart-full-$(date +%Y%m%d-%H%M)
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      # 🚀 Release
-      - name: Create Release
+      # 🚀 release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: Quickstart Build ${{ steps.tag.outputs.tag }}
           files: output/*.ipk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
