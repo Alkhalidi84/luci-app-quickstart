@@ -1,4 +1,4 @@
-name: Build Quickstart Full (Stable)
+name: Build Quickstart Full (Stable No Rate Limit)
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
             libncurses-dev libssl-dev python3 python3-setuptools \
             rsync unzip zlib1g-dev file wget curl ca-certificates
 
-      # 📥 SDK (Stable)
+      # 📥 SDK
       - name: Download OpenWrt SDK
         run: |
           wget https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8/openwrt-sdk-23.05.5-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
@@ -42,17 +42,13 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
-      # ⏳ تقليل rate limit
-      - name: Wait before clone
-        run: sleep 20
-
-      # 🔥 Clone with retry + token
-      - name: Clone packages safely
+      # 🔥 تحميل quickstart بدون git
+      - name: Download luci-app-quickstart
         run: |
           cd sdk/package
-          for i in 1 2 3; do
-            git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/animegasan/luci-app-quickstart.git && break || sleep 15
-          done
+          wget https://github.com/animegasan/luci-app-quickstart/archive/refs/heads/main.zip
+          unzip main.zip
+          mv luci-app-quickstart-main luci-app-quickstart
 
       # 🔁 Replace with your version
       - name: Replace luci-app
@@ -67,7 +63,7 @@ jobs:
           cd sdk
           make defconfig
 
-      # 🏗️ Build (robust)
+      # 🏗️ Build
       - name: Build quickstart
         run: |
           cd sdk
